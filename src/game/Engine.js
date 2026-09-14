@@ -1,5 +1,6 @@
 import * as THREE from "three";
 import * as CANNON from "cannon-es";
+import { RoomEnvironment } from "three/examples/jsm/environments/RoomEnvironment.js";
 import { World } from "./world/World.js";
 import { Vehicle } from "./vehicle/Vehicle.js";
 import { CameraRig } from "./camera/CameraRig.js";
@@ -16,6 +17,7 @@ const QUALITY = {
   low: { pixelRatio: 1, traffic: 4, peds: 0, shadows: false },
   medium: { pixelRatio: 1.5, traffic: 8, peds: 6, shadows: true },
   high: { pixelRatio: 2, traffic: 13, peds: 12, shadows: true },
+  ultra: { pixelRatio: 2, traffic: 16, peds: 16, shadows: true },
 };
 
 export class Engine {
@@ -53,8 +55,20 @@ export class Engine {
     this.renderer.shadowMap.enabled = q.shadows;
     this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
+    this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    this.renderer.toneMappingExposure = 1.05;
 
     this.scene = new THREE.Scene();
+
+    // Neutral image-based lighting for PBR reflections (car paint, glass,
+    // chrome). Applied only to the vehicle (see below) rather than globally:
+    // three r160 has no scene.environmentIntensity, so a global env map would
+    // light the whole city at a constant level and prevent nights from ever
+    // getting dark. World brightness is therefore driven by the day/night
+    // lights, and the car keeps real reflections.
+    const pmrem = new THREE.PMREMGenerator(this.renderer);
+    this.envRT = pmrem.fromScene(new RoomEnvironment(), 0.04);
+    pmrem.dispose();
     this.camera = new THREE.PerspectiveCamera(
       68,
       window.innerWidth / window.innerHeight,
@@ -86,6 +100,21 @@ export class Engine {
     const sp = this.save.player || this.layout.spawn;
     this.vehicle.setSpawn(sp.x, sp.z, sp.heading || 0);
 
+    // Give only the vehicle image-based reflections.
+    const applyEnv = (root) =>
+      root.traverse((o) => {
+        if (!o.material) return;
+        const mats = Array.isArray(o.material) ? o.material : [o.material];
+        for (const m of mats) {
+          if ("envMap" in m) {
+            m.envMap = this.envRT.texture;
+            m.needsUpdate = true;
+          }
+        }
+      });
+    applyEnv(this.vehicle.car.group);
+    for (const w of this.vehicle.car.wheels) applyEnv(w);
+
     this.rig = new CameraRig(this.camera);
     this.rig.setMode(this.save.cameraMode || "chase");
 
@@ -97,7 +126,7 @@ export class Engine {
     // headlight pool for street lamps (limited real point lights at night)
     this.lampPool = [];
     if (this.quality !== "low") {
-      const poolSize = this.quality === "high" ? 8 : 5;
+      const poolSize = this.quality === "high" || this.quality === "ultra" ? 10 : 5;
       for (let i = 0; i < poolSize; i++) {
         const pl = new THREE.PointLight(0xffdca0, 0, 26, 1.6);
         this.scene.add(pl);
@@ -284,7 +313,7 @@ export class Engine {
       const pl = this.lampPool[i];
       if (i < scored.length) {
         pl.position.copy(scored[i].p);
-        pl.intensity = 2.2 * night;
+        pl.intensity = 4.5 * night;
       } else {
         pl.intensity = 0;
       }

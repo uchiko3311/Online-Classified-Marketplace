@@ -3,7 +3,9 @@
 // (a dense old-town street grid, the Mtkvari riverside, the Svetitskhoveli
 // cathedral as a central landmark and a Jvari-style monastery on the hill
 // across the water). It is NOT surveyed GIS data and is not an exact
-// reproduction of the real street network.
+// reproduction of the real street network. The street topology is a
+// regularized plan; architectural variety (roofs, heights, styles, colours)
+// is procedurally generated to read like a real Georgian town.
 
 function mulberry32(seed) {
   let a = seed >>> 0;
@@ -27,10 +29,22 @@ export function nodePos(i, j) {
   };
 }
 
+// Major avenues are wider; used for visuals + wider carriageway.
+export function isMajor(index) {
+  const mid = Math.floor(GRID / 2);
+  return index === mid || index === 0 || index === GRID - 1;
+}
+
+// Warm Georgian old-town palette: sandstone, ochre, cream, faded brick.
+const WALL_PALETTE = [
+  "#d9cba9", "#cdb894", "#e0d4bb", "#c7a97f", "#d2b48c",
+  "#bfa17c", "#e6dcc6", "#b89b78", "#caa15f", "#d8c4a0",
+];
+const ROOF_PALETTE = ["#9a4b30", "#a5502f", "#8f4429", "#b1603a", "#7d4b3a", "#994d33"];
+
 export function buildLayout(seed = 20240115) {
   const rand = mulberry32(seed);
 
-  // River runs along the far south edge (beyond the last road row).
   const riverZ = HALF + BLOCK * 0.75;
   const riverWidth = 46;
 
@@ -64,7 +78,7 @@ export function buildLayout(seed = 20240115) {
   }
 
   // Central landmark block (Svetitskhoveli-style cathedral) ----------------
-  const cathCol = Math.floor(GRID / 2) - 1; // block index
+  const cathCol = Math.floor(GRID / 2) - 1;
   const cathRow = Math.floor(GRID / 2) - 1;
   const cathCenter = {
     x: (cathCol + 0.5) * BLOCK - HALF,
@@ -76,31 +90,65 @@ export function buildLayout(seed = 20240115) {
   const buildings = [];
   const trees = [];
   const lights = [];
-  const palette = ["#c9bda6", "#b8a488", "#cdc4b4", "#a89b83", "#d8cdb8", "#9c8f79"];
+  const props = []; // benches, bins, fences (street furniture)
+
+  const mid = Math.floor(GRID / 2);
+  const styleFor = (bc, br) => {
+    // old-town core near cathedral => low stone houses; edges => taller
+    const distCore = Math.hypot(bc - cathCol, br - cathRow);
+    if (distCore < 2.2) return "oldtown";
+    if (bc <= 1 || br <= 1 || bc >= GRID - 3 || br >= GRID - 3) return "residential";
+    return rand() < 0.35 ? "midrise" : "residential";
+  };
 
   for (let bc = 0; bc < GRID - 1; bc++) {
     for (let br = 0; br < GRID - 1; br++) {
       const isCathedral = bc === cathCol && br === cathRow;
+      if (isCathedral) continue;
+
       const blockX0 = bc * BLOCK - HALF + ROAD_HALF;
       const blockZ0 = br * BLOCK - HALF + ROAD_HALF;
       const blockW = BLOCK - ROAD_HALF * 2;
+      const style = styleFor(bc, br);
 
-      // Small central square (park) sometimes.
-      const isPark = !isCathedral && rand() < 0.09;
+      // A plaza next to the cathedral, occasional parks elsewhere.
+      const nearCath = Math.abs(bc - cathCol) <= 1 && Math.abs(br - cathRow) <= 1;
+      const isPark = !nearCath && rand() < 0.1;
+      const isPlaza = nearCath && rand() < 0.5;
 
-      if (isCathedral) continue; // reserved for the landmark
-      if (isPark) {
-        // Trees clustered in the park.
+      if (isPlaza) {
         const cx = blockX0 + blockW / 2;
         const cz = blockZ0 + blockW / 2;
-        const count = 5 + Math.floor(rand() * 5);
+        // ring of trees + benches around an open cobbled square
+        const count = 6 + Math.floor(rand() * 4);
+        for (let t = 0; t < count; t++) {
+          const a = (t / count) * Math.PI * 2;
+          trees.push({
+            x: cx + Math.cos(a) * blockW * 0.42,
+            z: cz + Math.sin(a) * blockW * 0.42,
+            s: 0.9 + rand() * 0.5,
+            kind: rand() < 0.4 ? "cypress" : "round",
+          });
+          if (t % 2 === 0)
+            props.push({ type: "bench", x: cx + Math.cos(a) * blockW * 0.3, z: cz + Math.sin(a) * blockW * 0.3, rot: a });
+        }
+        continue;
+      }
+
+      if (isPark) {
+        const cx = blockX0 + blockW / 2;
+        const cz = blockZ0 + blockW / 2;
+        const count = 6 + Math.floor(rand() * 6);
         for (let t = 0; t < count; t++) {
           trees.push({
-            x: cx + (rand() - 0.5) * blockW * 0.8,
-            z: cz + (rand() - 0.5) * blockW * 0.8,
-            s: 0.8 + rand() * 0.9,
+            x: cx + (rand() - 0.5) * blockW * 0.82,
+            z: cz + (rand() - 0.5) * blockW * 0.82,
+            s: 0.8 + rand() * 1.0,
+            kind: rand() < 0.35 ? "cypress" : "round",
           });
         }
+        props.push({ type: "bench", x: cx - 3, z: cz, rot: 0 });
+        props.push({ type: "bench", x: cx + 3, z: cz, rot: Math.PI });
         continue;
       }
 
@@ -112,28 +160,45 @@ export function buildLayout(seed = 20240115) {
         [blockX0 + half, blockZ0 + half],
       ];
       for (const [lx, lz] of lots) {
-        if (rand() < 0.18) {
-          // vacant lot -> a couple of trees
-          trees.push({ x: lx + half / 2, z: lz + half / 2, s: 0.7 + rand() * 0.6 });
+        if (rand() < 0.16) {
+          // garden / vacant lot -> trees + a low wall
+          trees.push({ x: lx + half / 2, z: lz + half / 2, s: 0.7 + rand() * 0.7, kind: rand() < 0.3 ? "cypress" : "round" });
           continue;
         }
-        const setback = 2 + rand() * 3;
+        const setback = 2.5 + rand() * 3;
         const w = half - setback * 2 - rand() * 3;
         const d = half - setback * 2 - rand() * 3;
-        if (w < 6 || d < 6) continue;
-        const tier = rand();
-        let h;
-        if (tier < 0.55) h = 6 + rand() * 6; // houses
-        else if (tier < 0.9) h = 12 + rand() * 12; // mid rise
-        else h = 24 + rand() * 20; // taller
+        if (w < 7 || d < 7) continue;
+
+        let floors, roofType;
+        if (style === "oldtown") {
+          floors = 1 + Math.floor(rand() * 2); // 1-2 storey stone houses
+          roofType = rand() < 0.75 ? "gable" : "hip";
+        } else if (style === "residential") {
+          floors = 2 + Math.floor(rand() * 3); // 2-4 storey
+          roofType = rand() < 0.5 ? "gable" : rand() < 0.7 ? "hip" : "flat";
+        } else {
+          floors = 4 + Math.floor(rand() * 5); // 4-8 storey mid-rise
+          roofType = rand() < 0.75 ? "flat" : "hip";
+        }
+        const floorH = 3.0 + rand() * 0.4;
+        const h = floors * floorH;
+
         buildings.push({
           x: lx + half / 2,
           z: lz + half / 2,
           w,
           d,
           h,
-          color: palette[Math.floor(rand() * palette.length)],
-          roof: rand() < 0.5,
+          floors,
+          floorH,
+          rot: (rand() - 0.5) * 0.12, // subtle orientation variety
+          wallColor: WALL_PALETTE[Math.floor(rand() * WALL_PALETTE.length)],
+          roofType,
+          roofColor: ROOF_PALETTE[Math.floor(rand() * ROOF_PALETTE.length)],
+          hasBalcony: style !== "midrise" && rand() < 0.55,
+          hasGarden: style !== "midrise" && rand() < 0.4,
+          style,
         });
       }
     }
@@ -146,22 +211,21 @@ export function buildLayout(seed = 20240115) {
       const z0 = j * BLOCK - HALF;
       for (let k = 1; k <= 2; k++) {
         const z = z0 + (BLOCK * k) / 3;
-        trees.push({ x: gx + ROAD_HALF + 2.5, z, s: 0.7 + rand() * 0.4 });
-        trees.push({ x: gx - ROAD_HALF - 2.5, z, s: 0.7 + rand() * 0.4 });
+        const kind = rand() < 0.35 ? "cypress" : "round";
+        trees.push({ x: gx + ROAD_HALF + 2.6, z, s: 0.7 + rand() * 0.4, kind });
+        trees.push({ x: gx - ROAD_HALF - 2.6, z, s: 0.7 + rand() * 0.4, kind });
       }
     }
   }
   for (let i = 0; i < GRID; i++) {
     for (let j = 0; j < GRID; j++) {
       const p = nodePos(i, j);
-      lights.push({ x: p.x + ROAD_HALF + 1.5, z: p.z + ROAD_HALF + 1.5 });
+      lights.push({ x: p.x + ROAD_HALF + 1.6, z: p.z + ROAD_HALF + 1.6 });
     }
   }
 
-  // Jvari-style monastery on the hill across the river ---------------------
   const monastery = { x: BLOCK * 0.5, z: riverZ + riverWidth / 2 + 34, y: 10 };
 
-  // Bridge: main central north-south road crossing the river --------------
   const bridge = {
     x: 0,
     z0: HALF,
@@ -183,6 +247,7 @@ export function buildLayout(seed = 20240115) {
     buildings,
     trees,
     lights,
+    props,
     cathedral,
     monastery,
     river: { z: riverZ, width: riverWidth, length: HALF * 2 + BLOCK * 4 },

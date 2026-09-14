@@ -2,9 +2,9 @@ import React, { useState } from "react";
 import { writeSave, clearSave } from "../game/save/save.js";
 import { emit } from "../game/state/gameBus.js";
 
-const QUALITIES = ["low", "medium", "high"];
+const QUALITIES = ["low", "medium", "high", "ultra"];
 const WEATHERS = ["clear", "cloudy", "rain"];
-const PIXEL = { low: 1, medium: 1.5, high: 2 };
+const PIXEL = { low: 1, medium: 1.5, high: 2, ultra: 2 };
 
 export default function Settings({ save, inGame, onBack }) {
   const [quality, setQuality] = useState(save.quality || "medium");

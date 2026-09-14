@@ -55,6 +55,8 @@ export default function App() {
 }
 
 function RotateHint() {
+  const [dismissed, setDismissed] = useState(false);
+  if (dismissed) return null;
   return (
     <div className="rotate-hint show" id="rotate-hint">
       <div style={{ fontSize: 48 }}>⟳</div>
@@ -63,6 +65,9 @@ function RotateHint() {
         For the best driving experience, rotate your phone horizontally
         (landscape).
       </p>
+      <button className="btn" onClick={() => setDismissed(true)}>
+        Continue anyway
+      </button>
     </div>
   );
 }

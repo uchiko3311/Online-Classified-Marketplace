@@ -164,7 +164,7 @@ export class Vehicle {
       l.material.emissiveIntensity = this.headlights ? 1.8 : 0;
     }
     for (const sl of this.car.headlightLights) {
-      sl.intensity = this.headlights ? 3.2 : 0;
+      sl.intensity = this.headlights ? 6.0 : 0;
     }
 
     // Indicators / hazard blink

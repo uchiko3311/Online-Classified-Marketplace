@@ -15,7 +15,7 @@ export class Sky {
 
     this.sun = new THREE.DirectionalLight(0xfff2d8, 1.5);
     this.sun.castShadow = quality !== "low";
-    const s = quality === "high" ? 2048 : 1024;
+    const s = quality === "high" || quality === "ultra" ? 2048 : 1024;
     this.sun.shadow.mapSize.set(s, s);
     const d = 120;
     this.sun.shadow.camera.left = -d;
@@ -87,8 +87,10 @@ export class Sky {
     if (this.weather === "rain") weatherDim = 0.4;
 
     this.sun.intensity = dayAmount * 2.2 * weatherDim;
-    this.hemi.intensity = (0.25 + dayAmount * 0.7) * (this.weather === "clear" ? 1 : 0.7);
-    this.ambient.intensity = 0.12 + dayAmount * 0.22;
+    // Low night floor so nights read dark and lamps/headlights stand out,
+    // while daylight stays bright.
+    this.hemi.intensity = (0.08 + dayAmount * 0.85) * (this.weather === "clear" ? 1 : 0.7);
+    this.ambient.intensity = 0.04 + dayAmount * 0.28;
 
     const sky = new THREE.Color();
     sky.copy(NIGHT_SKY).lerp(DAY_SKY, dayAmount);

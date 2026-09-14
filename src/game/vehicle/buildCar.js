@@ -16,15 +16,29 @@ function box(w, h, d, material) {
 export function buildCar(paint = "#1c1f24") {
   const group = new THREE.Group();
 
-  const bodyMat = mat(paint, 0.55, 0.45);
-  const trimMat = mat("#111318", 0.4, 0.6);
-  const chromeMat = mat("#c8ccd2", 0.9, 0.2);
-  const glassMat = new THREE.MeshStandardMaterial({
-    color: "#0d1218",
-    metalness: 0.1,
-    roughness: 0.05,
+  const bodyMat = new THREE.MeshPhysicalMaterial({
+    color: paint,
+    metalness: 0.6,
+    roughness: 0.32,
+    clearcoat: 1,
+    clearcoatRoughness: 0.18,
+    envMapIntensity: 1.25,
+  });
+  const trimMat = mat("#0e1014", 0.4, 0.55);
+  const chromeMat = new THREE.MeshPhysicalMaterial({
+    color: "#dfe3e8",
+    metalness: 1,
+    roughness: 0.14,
+    envMapIntensity: 1.6,
+  });
+  const glassMat = new THREE.MeshPhysicalMaterial({
+    color: "#0a0f15",
+    metalness: 0,
+    roughness: 0.04,
+    transmission: 0,
     transparent: true,
-    opacity: 0.55,
+    opacity: 0.42,
+    envMapIntensity: 1.5,
   });
 
   // --- Lower body / cabin (tall, upright G-wagon silhouette) ---
@@ -263,19 +277,50 @@ export function buildCar(paint = "#1c1f24") {
     18
   );
   const tireMat = mat("#0b0c0e", 0.1, 0.85);
-  const rimMat = mat("#c8ccd2", 0.9, 0.25);
+  const rimMat = new THREE.MeshPhysicalMaterial({
+    color: "#3a3d42",
+    metalness: 0.95,
+    roughness: 0.28,
+    envMapIntensity: 1.4,
+  });
+  const discMat = mat("#6a6d72", 0.7, 0.4);
+  const spokeGeo = new THREE.BoxGeometry(0.05, WHEEL_RADIUS * 0.95, 0.1);
   for (let i = 0; i < 4; i++) {
     const wheel = new THREE.Group();
     const tire = new THREE.Mesh(wheelGeo, tireMat);
     tire.rotation.z = Math.PI / 2; // align cylinder axis to X
     tire.castShadow = true;
     wheel.add(tire);
-    const rim = new THREE.Mesh(
-      new THREE.CylinderGeometry(WHEEL_RADIUS * 0.55, WHEEL_RADIUS * 0.55, WHEEL_WIDTH + 0.02, 8),
+
+    // brake disc behind the rim
+    const disc = new THREE.Mesh(
+      new THREE.CylinderGeometry(WHEEL_RADIUS * 0.62, WHEEL_RADIUS * 0.62, 0.04, 16),
+      discMat
+    );
+    disc.rotation.z = Math.PI / 2;
+    wheel.add(disc);
+
+    // rim barrel + 5 spokes + hub (AMG-style)
+    const barrel = new THREE.Mesh(
+      new THREE.CylinderGeometry(WHEEL_RADIUS * 0.66, WHEEL_RADIUS * 0.66, WHEEL_WIDTH + 0.04, 20),
       rimMat
     );
-    rim.rotation.z = Math.PI / 2;
-    wheel.add(rim);
+    barrel.rotation.z = Math.PI / 2;
+    wheel.add(barrel);
+    const face = new THREE.Group();
+    face.position.x = WHEEL_WIDTH / 2;
+    for (let s = 0; s < 5; s++) {
+      const spoke = new THREE.Mesh(spokeGeo, rimMat);
+      spoke.rotation.x = (s * Math.PI * 2) / 5;
+      face.add(spoke);
+    }
+    const hub = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.1, 0.1, 0.06, 12),
+      chromeMat
+    );
+    hub.rotation.z = Math.PI / 2;
+    face.add(hub);
+    wheel.add(face);
     wheels.push(wheel);
   }
 
